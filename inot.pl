@@ -153,10 +153,9 @@ $watcher_sub = sub {
     my $time = time();
     my $fullname = $e->fullname;
 
-    if (    $fullname =~ m{/tempfile\.tmp$} # svn update tempfile
-         || $fullname =~ m{/app_revisions\.svni$} # generated
-         || $fullname =~ m{/\.swp$} # vi editor backup
+    if (    $fullname =~ m{/\.swp$} # vi editor backup
          || $fullname =~ m{/\.swx$} # vi editor backup
+         # || $fullname =~ m{/tempfile\.tmp$} # svn update tempfile
     ) {
         print "Skipping '$fullname'.\n" if $ver >= 5;
 
