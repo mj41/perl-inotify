@@ -51,88 +51,6 @@ use strict 'refs';
 print "\n" if $ver >= 5;
 
 
-my $svn_su_prefix = 'su vyvoj -c"';
-my $svn_su_suffix = '"';
-my $svn_cmd_prefix = '/usr/bin/';
-
-
-sub svn_diff {
-    my ( $item ) = @_;
-
-    my $svndiff_cmd =
-        $svn_su_prefix
-        . $svn_cmd_prefix . 'svn diff ' . $item
-        . $svn_su_suffix
-        . ' 2>&1 |'
-    ;
-
-    unless ( open( SVNDIFF, $svndiff_cmd ) ) {
-        return ( 0, $! );
-    }
-
-    my @lines = ();
-    while ( my $line = <SVNDIFF> ) { push @lines, $line };
-    close SVNDIFF;
-
-    my $no_exists = 0;
-    if ( scalar(@lines) <= 0 ) {
-        print "Empty svn diff.\n" if $ver >= 5;
-
-    } elsif ( $lines[0] =~ /is\ not\ under\ version\ control$/ ) {
-        print "Not in svn.\n" if $ver >= 5;
-
-    } elsif ( $lines[0] =~ /is\ not\ a\ working\ copy$/ ) {
-        print "Not svn dir.\n"  if $ver >= 5;
-
-    } elsif (    $lines[0] =~ m{^Index\:\s+}
-              && $lines[1] =~ m{^\={20,}}
-              && $lines[2] =~ m{^\-\-\-\s+}
-              && $lines[3] =~ m{^\+\+\+\s+}
-              && $lines[4] =~ m{^\@\@\s+}
-    ) {
-        print "Svn diff found.\n" if $ver >= 5;
-        if ( $ver >= 8 ) {
-            print join( '', @lines );
-            print "-" x 80 . "\n";
-        }
-
-        my $plus_str = '';
-        my $minus_str = '';
-        my $lines_count_diff = 0;
-        my $lines_count_modif = 0;
-        foreach my $line_num (5..$#lines) {
-            my $line = $lines[$line_num];
-            my $first_char = substr( $line, 0, 1 );
-
-            if ( $first_char eq '-' || $first_char eq '+' ) {
-
-               $line = substr( $line, 1 );
-               $line =~ s{[\s\n\t\r]}{}g;
-
-               $lines_count_modif++ if length($line) > 0;;
-               if ( $first_char eq '-' ) {
-                    $minus_str .= $line;
-                    $lines_count_diff-- if length($line) > 0;
-                } else {
-                    $plus_str .= $line;
-                    $lines_count_diff++ if length($line) > 0;
-                }
-            }
-        }
-        print "-$minus_str\n" if $ver >= 9;
-        print "+$plus_str\n" if $ver >= 9;;
-
-        my $len_diff = length($plus_str) - length($minus_str);
-        print "  str len change: $len_diff, lines num diff: $lines_count_diff, lines num modif: $lines_count_modif\n" if $ver >= 2;
-
-    } else {
-        print "Svn diff - unknown.\n" if $ver >= 5;
-        print join( '', @lines );
-    }
-    return ( 1, 'ok' );
-}
-
-
 sub mdump {
     my ( $data ) = @_;
     local $Data::Dumper::Indent = 1;
@@ -172,7 +90,7 @@ sub inotify_watch {
 
     my $watcher = $inotify->watch(
         $dir,
-        ( IN_MODIFY | IN_ATTRIB | IN_CLOSE_WRITE | IN_MOVED_TO | IN_MOVED_FROM | IN_CREATE | IN_DELETE | IN_IGNORED | IN_UNMOUNT | IN_DELETE_SELF ),
+        ( IN_MODIFY | IN_CLOSE_WRITE | IN_MOVED_TO | IN_MOVED_FROM | IN_CREATE | IN_DELETE | IN_IGNORED | IN_UNMOUNT | IN_DELETE_SELF ),
         $watcher_sub
     );
 
@@ -191,13 +109,10 @@ sub item_to_watch {
     my ( $dir ) = @_;
 
     return undef unless -d $dir;
-    return undef if $dir =~ '/.svn$';
-    return undef if $dir =~ '/\.svn/';
 
-    unless ( $devel ) {
-        return undef if $dir =~ m'{/jurosz2/}';
-        return undef if $dir =~ m'{/jurosz2$}';
-    }
+    # Do not watch version control dirs.
+    #return undef if $dir =~ '/.svn$';
+    #return undef if $dir =~ '/\.svn/';
 
     return inotify_watch( $dir );
 }
@@ -273,11 +188,6 @@ $watcher_sub = sub {
         print ", cookie: '" . $e->{cookie} . "'" if $e->{cookie};
         print "\n";
 
-        if ( ! $e->IN_ISDIR ) {
-            my ( $rc, $msg ) = svn_diff( $fullname );
-            print "rc: $rc, msg: $msg\n" if $ver >= 9;
-        }
-
         # Print line separator only each second.
         if ( floor($time) != $last_time ) {
             print "-" x 80 . "\n";
@@ -324,12 +234,4 @@ if ( $num_to_watch != $num_watched ) {
 
 
 # Main event loop.
-if ( 1 ) {
-    1 while $inotify->poll;
-} else {
-    $inotify->blocking(0);
-    while ( 1 ) {
-        $inotify->poll;
-        sleep(0.01);
-    }
-}
+1 while $inotify->poll;
