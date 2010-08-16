@@ -1,6 +1,16 @@
 use strict;
 use warnings;
 
+# ToDo
+# * add recursive remove support
+# * refactor to Perl package
+# * add tests
+# * add documentation
+
+# Assumptions
+# a) No MOVED_TO, MOVED_FROM order.
+# b) No items related events between MOVED_FROM and MOVED_TO.
+# c) MOVED_FROM and MOVED_TO not in two sepparated "$inotify->read"s.
 
 use Carp qw(carp croak verbose);
 use Data::Dumper;
@@ -86,7 +96,7 @@ my $num_to_watch = 0;
 sub inotify_watch {
     my ( $dir ) = @_;
 
-    print "Watching $dir\n" if $ver >= 8;
+    print "Watching $dir\n" if $ver >= 4;
 
     my $watcher = $inotify->watch(
         $dir,
@@ -105,15 +115,26 @@ sub inotify_watch {
 }
 
 
-sub item_to_watch {
+sub watch_this {
     my ( $dir ) = @_;
 
-    return undef unless -d $dir;
+    return 0 unless -d $dir;
 
     # Do not watch version control dirs.
-    #return undef if $dir =~ '/.svn$';
-    #return undef if $dir =~ '/\.svn/';
+    #return 0 if $dir =~ m{/.svn$/};
+    #return 0 if $dir =~ m{/\.svn/};
 
+    # Inside temp directory.
+    #return 0 if $dir =~ m{/temp/};
+
+    return 1;
+
+}
+
+
+sub item_to_watch {
+    my ( $dir ) = @_;
+    return undef unless watch_this( $dir );
     return inotify_watch( $dir );
 }
 
@@ -145,7 +166,7 @@ sub item_to_remove {
     return 0;
 }
 
-
+my $cookie_to_rm = {};
 my $last_time = 0;
 $watcher_sub = sub {
     my $e = shift;
@@ -160,8 +181,33 @@ $watcher_sub = sub {
         print "Skipping '$fullname'.\n" if $ver >= 5;
 
     }  else {
-        if ( ($e->IN_CREATE || $e->IN_MOVED_TO) && $e->IN_ISDIR ) {
-            my $watcher = item_to_watch( $fullname );
+        if ( $e->IN_CREATE || $e->IN_MOVED_TO ) {
+            unless ( defined $e->{cookie} ) {
+                my $watcher = item_to_watch( $fullname );
+
+            } else {
+                my $cookie = $e->{cookie};
+                if ( exists $cookie_to_rm->{$cookie} ) {
+                    # Check if we want to watch new name.
+                    if ( watch_this($fullname) ) {
+                        # Update path inside existing watch.
+                        my $watcher = inotify_watch( $fullname );
+                        delete $cookie_to_rm->{$cookie};
+
+                    # Remove old watch if exists.
+                    } elsif ( defined $cookie_to_rm->{$cookie} ) {
+                        my $c_fullname = $cookie_to_rm->{$cookie};
+                        item_to_remove( $inotify, $c_fullname );
+                        delete $cookie_to_rm->{$cookie};
+
+                    # Remember new cookie.
+                    } else {
+                        $cookie_to_rm->{ $e->{cookie} } = undef;
+                    }
+                } else {
+                    my $watcher = inotify_watch( $fullname );
+                }
+            }
         }
 
         my @lt = localtime($time);
@@ -198,9 +244,16 @@ $watcher_sub = sub {
     # Event on directory, but item inside changed.
     if ( length($e->{name}) ) {
         # Directory moved away.
-        if ( ($e->{mask} & IN_MOVED_FROM) && $e->IN_ISDIR ) {
-            # ToDo - if used, then exit
-            #item_to_remove( $inotify, $fullname );
+        if ( $e->{mask} & IN_MOVED_FROM ) {
+            my $cookie = $e->{cookie};
+            if ( exists $cookie_to_rm->{$cookie} ) {
+                # Nothing yo do. See assumption a).
+                print "Warning: Probably moved_from after moved_to occurs.\n" if $ver >= 1;
+            } else {
+                # We don't know new name yet, so we can't decide what to do (update or remove watch).
+                # See assumption b).
+                $cookie_to_rm->{ $cookie } = $fullname;
+            }
         }
 
     # Event on item itself.
@@ -233,4 +286,23 @@ if ( $num_to_watch != $num_watched ) {
 
 
 # Main event loop.
-1 while $inotify->poll;
+while () {
+   my @events = $inotify->read;
+   if ( @events > 0 ) {
+       if ( %$cookie_to_rm ) {
+           # Remove all IN_MOVE_FROM without IN_MOVE_TO. See assumption c).
+           print 'cookie_to_rm: ' . mdump( $cookie_to_rm ) if $ver >= 10;
+           foreach my $cookie ( keys %$cookie_to_rm ) {
+               if ( defined $cookie_to_rm->{$cookie} ) {
+                    my $fullname = $cookie_to_rm->{$cookie};
+                    print "After loop cleanup - fullname '$fullname'.\n" if $ver >= 4;
+                    item_to_remove( $inotify, $fullname );
+                    delete $cookie_to_rm->{$cookie};
+               }
+           }
+       }
+
+   } else {
+        print "Read error: $!\n" if $!;
+   }
+}
