@@ -2,7 +2,7 @@ use strict;
 use warnings;
 
 # ToDo
-# * add recursive remove support
+# * separate config for watching files and directories
 # * refactor to Perl package
 # * add tests
 # * add documentation
@@ -139,32 +139,74 @@ sub item_to_watch {
 }
 
 
-sub item_to_remove {
-    my ( $inotify, $item, $e ) = @_;
+sub items_to_watch_recursive {
+    my ( $dirs_to_watch ) = @_;
+
+    # Add watchers.
+    return finddepth( {
+            wanted => sub {
+                item_to_watch( $_ );
+            },
+            no_chdir => 1,
+        },
+        @$dirs_to_watch
+    );
+}
 
 
-    # Removing by object ref.
-    if ( defined $e ) {
-        print "Stopping watching $item (by object).\n" if $ver >= 5;
-        my $ret_code = $e->{w}->cancel;
-        dump_watched( $inotify, 'removed by ref' ) if $ver >= 10;
-        return $ret_code;
-    }
+sub item_to_remove_by_name {
+    my ( $inotify, $item_torm_base, $recursive ) = @_;
+    
+    my $ret_code = 1;
 
     # Removing by name.
+    my $item_torm_len = length( $item_torm_base );
     foreach my $watch ( values %{ $inotify->{w} } ) {
-        if ( $watch->{name} eq $item ) {
-            print "Stopping watching $item (by name).\n" if $ver >= 5;
+        my $remove = 0;
+        my $item_name = $watch->{name};
+        if ( $recursive ) {
+            if ( length($item_name) >= $item_torm_len 
+                 && substr($item_name,0,$item_torm_len) eq $item_torm_base 
+            ) {
+                $remove = 1;
+            }
+
+        } else {
+            $remove = 1 if $item_name eq $item_torm_base;
+        }
+        
+        if ( $remove ) {
+            print "Stopping watching $item_name (by name '$item_torm_base', rec: $recursive).\n" if $ver >= 5;
             #print mdump( $watch );
-            my $ret_code = $watch->cancel;
+            my $tmp_ret_code = $watch->cancel;
             dump_watched( $inotify, 'removed by name' ) if $ver >= 10;
-            return $ret_code;
+            $ret_code = 0 unless $tmp_ret_code;
         }
     }
+    
+    return $ret_code;
+}
+
+
+sub item_to_remove_by_event {
+    my ( $inotify, $item, $e, $recursive ) = @_;
+
+    # Removing by object ref.
+    print "Stopping watching $item (by object).\n" if $ver >= 5;
+    my $ret_code = 1;
+    if ( $recursive ) {
+        my $items_inside_prefix = $item . '/';
+        $ret_code = item_to_remove_by_name( $inotify, $items_inside_prefix, $recursive );
+    }
+    my $tmp_ret_code = $e->{w}->cancel;
+    $ret_code = 0 unless $tmp_ret_code;
+    dump_watched( $inotify, 'removed by ref' ) if $ver >= 10;
+    return $ret_code;
 
     print "Error: Can't remove item '$item' (not found).\n" if $ver >= 1;
     return 0;
 }
+
 
 my $cookie_to_rm = {};
 my $last_time = 0;
@@ -181,32 +223,31 @@ $watcher_sub = sub {
         print "Skipping '$fullname'.\n" if $ver >= 5;
 
     }  else {
-        if ( $e->IN_CREATE || $e->IN_MOVED_TO ) {
-            unless ( defined $e->{cookie} ) {
-                my $watcher = item_to_watch( $fullname );
+        if ( $e->IN_CREATE ) {
+            items_to_watch_recursive( [ $fullname ] );
+            
+        } elsif ( $e->IN_MOVED_TO ) {
+            my $cookie = $e->{cookie};
+            if ( exists $cookie_to_rm->{$cookie} ) {
+                # Check if we want to watch new name.
+                if ( watch_this($fullname) ) {
+                    # Update path inside existing watch.
+                    items_to_watch_recursive( [ $fullname ] );
+                    delete $cookie_to_rm->{$cookie};
+
+                # Remove old watch if exists.
+                } elsif ( defined $cookie_to_rm->{$cookie} ) {
+                    my $c_fullname = $cookie_to_rm->{$cookie};
+                    item_to_remove_by_name( $inotify, $c_fullname, 1 );
+                    delete $cookie_to_rm->{$cookie};
+
+                # Remember new cookie.
+                } else {
+                    $cookie_to_rm->{ $e->{cookie} } = undef;
+                }
 
             } else {
-                my $cookie = $e->{cookie};
-                if ( exists $cookie_to_rm->{$cookie} ) {
-                    # Check if we want to watch new name.
-                    if ( watch_this($fullname) ) {
-                        # Update path inside existing watch.
-                        my $watcher = inotify_watch( $fullname );
-                        delete $cookie_to_rm->{$cookie};
-
-                    # Remove old watch if exists.
-                    } elsif ( defined $cookie_to_rm->{$cookie} ) {
-                        my $c_fullname = $cookie_to_rm->{$cookie};
-                        item_to_remove( $inotify, $c_fullname );
-                        delete $cookie_to_rm->{$cookie};
-
-                    # Remember new cookie.
-                    } else {
-                        $cookie_to_rm->{ $e->{cookie} } = undef;
-                    }
-                } else {
-                    my $watcher = inotify_watch( $fullname );
-                }
+                items_to_watch_recursive( [ $fullname ] );
             }
         }
 
@@ -258,7 +299,7 @@ $watcher_sub = sub {
 
     # Event on item itself.
     } elsif ( $e->{mask} & (IN_IGNORED | IN_UNMOUNT | IN_ONESHOT | IN_DELETE_SELF) ) {
-        item_to_remove( $inotify, $fullname, $e );
+        item_to_remove_by_event( $inotify, $fullname, $e, 1 );
     }
 
     dump_watched( $inotify, 'actual list' ) if $ver >= 9;
@@ -268,15 +309,7 @@ $watcher_sub = sub {
 
 
 
-# Add watchers.
-finddepth( {
-        wanted => sub {
-            item_to_watch( $_ );
-        },
-        no_chdir => 1,
-    },
-    @$dirs_to_watch
-);
+items_to_watch_recursive( $dirs_to_watch );
 
 if ( $num_to_watch != $num_watched ) {
     print "Watching only $num_watched of $num_to_watch dirs.\n";
@@ -287,6 +320,7 @@ if ( $num_to_watch != $num_watched ) {
 
 # Main event loop.
 while () {
+   $! = undef;
    my @events = $inotify->read;
    if ( @events > 0 ) {
        if ( %$cookie_to_rm ) {
@@ -296,13 +330,15 @@ while () {
                if ( defined $cookie_to_rm->{$cookie} ) {
                     my $fullname = $cookie_to_rm->{$cookie};
                     print "After loop cleanup - fullname '$fullname'.\n" if $ver >= 4;
-                    item_to_remove( $inotify, $fullname );
+                    item_to_remove_by_name( $inotify, $fullname, 0 );
+                    my $items_inside_prefix = $fullname . '/';
+                    item_to_remove_by_name( $inotify, $items_inside_prefix, 1 );
                     delete $cookie_to_rm->{$cookie};
                }
            }
        }
 
    } else {
-        print "Read error: $!\n" if $!;
+        print "Read error: $!\n" if $ver >= 1 && $!;
    }
 }
