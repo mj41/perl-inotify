@@ -1,7 +1,7 @@
 =head1 SYNOPSIS
 
-Linux::Inotify2 experiment code. Trying recursive watch some directories.
-Also add, remove and change wachts as needed.
+Linux::Inotify2::Recur is experiment code extending Linux::Inotify2 to recursive 
+watch some directories. Also add, remove and change wachts as needed.
 
 =head1 Debugging
 
@@ -9,25 +9,9 @@ To run inot in debug mode try
 
     cd perl-inotify
     mkdir ./test-dir
-    perl inot.pl 0 10
+    perl inot.pl 0 9
 
 and then do some changes inside ./test-dir.
-
-=head1 Troubleshooting
-
-=head2 Error "no space left on device"
-
-See Kernel Korner - Intro to inotify, Sep 28 2005, Robert Love, Linux Journal (L<http://www.linuxjournal.com/article/8478?page=0,3>)
-
-Commands like
-
-    cat /proc/sys/fs/inotify/max_queued_events
-    cat /proc/sys/fs/inotify/max_user_watches
-
-    echo 65536 > /proc/sys/fs/inotify/max_queued_events
-    echo 32768 > /proc/sys/fs/inotify/max_user_watches
-
-should help.
 
 =head1 See also
 

@@ -1,10 +1,7 @@
 package Linux::Inotify2::Recur;
 
 use strict;
-use warnings;
-
 use base 'Linux::Inotify2';
-
 # ToDo? - how to import IN_MODIFY and others?
 use Linux::Inotify2;
 
@@ -37,12 +34,6 @@ Linux::Inotify2::Recur - recursive directory/file change notification
  ...
  9 ... all debug info
  
-=head1 Assumptions
-
- a) No MOVED_TO, MOVED_FROM order.
- b) No items related events between MOVED_FROM and MOVED_TO.
- c) MOVED_FROM and MOVED_TO not in two separated "$inotify->read"s.
-
 =cut
 
 sub new {
@@ -370,5 +361,37 @@ sub pool {
     print "Error: Event read error - $!\n" if $self->{ver} >= 1 && $!;
     return 1;
 }
+
+=head1 Assumptions
+
+ a) No MOVED_TO, MOVED_FROM order.
+ b) No items related events between MOVED_FROM and MOVED_TO.
+ c) MOVED_FROM and MOVED_TO not in two separated "$inotify->read"s.
+
+=head1 Troubleshooting
+
+=head2 Error "no space left on device"
+
+See Kernel Korner - Intro to inotify, Sep 28 2005, Robert Love, Linux Journal (L<http://www.linuxjournal.com/article/8478?page=0,3>)
+
+Commands like
+
+    cat /proc/sys/fs/inotify/max_queued_events
+    cat /proc/sys/fs/inotify/max_user_watches
+
+    echo 65536 > /proc/sys/fs/inotify/max_queued_events
+    echo 32768 > /proc/sys/fs/inotify/max_user_watches
+
+should help.
+
+=head1 See also
+
+L<Linux::Inotify2|Linux::Inotify2> CPAN module.
+
+=head1 Author
+
+Michal Jurosz - L<irc://irc.freenode.org/#mj41> - email: mj{$zav}mj41.cz
+
+=cut
 
 1;
