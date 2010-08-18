@@ -19,8 +19,10 @@ Linux::Inotify2::Recur - recursive directory/file change notification
  use Linux::Inotify2::Recur;
  
  # create a new object
- my $inotify = new Linux::Inotify2::Recur( $verbosity_level )
-    or die "Unable to create new inotify object: $!\n";
+ my $inotify = new Linux::Inotify2::Recur({
+    'ver' => $ver,
+    
+ }) or die "Unable to create new inotify object: $!\n";
 
  # manual event loop
  1 while $inotify->poll;
@@ -30,21 +32,25 @@ Linux::Inotify2::Recur - recursive directory/file change notification
  0 ... nothing
  1 ... fatal errors
  2 ... short info
- 3 ... base info
+ 3 ... base info (default)
  ...
- 9 ... all debug info
+ 8 ... all debug info
+ 9 ... too many debug info
  
 =cut
 
 sub new {
-    my ( $class, $ver ) = @_;
+    my ( $class, $conf ) = @_;
 
     my $self = $class->SUPER::new();
     
-    $self->{ver} = 3;
-    $self->{ver} = $ver if defined $ver;
-    
     # Verbosity level
+    $self->{ver} = 3;
+    $self->{ver} = $conf->{ver} if defined $conf->{ver};
+    
+    # Dirs to skip.
+    $self->{grep_dirs_sub} = undef;
+    $self->{grep_dirs_sub} = $conf->{grep_dirs_sub} if defined $conf->{grep_dirs_sub};
     
     $self->load_ev_names() if $self->{ver} >= 3;
     
@@ -89,7 +95,7 @@ sub dump_watched {
 
 
 sub inotify_watch {
-    my ( $self, $dir ) = @_;
+    my ( $self, $dir, $initial_run ) = @_;
 
     print "Watching '$dir'\n" if $self->{ver} >= 4;
 
@@ -105,7 +111,7 @@ sub inotify_watch {
     } else {
         print "Error adding watcher: $!\n" if $self->{ver} >= 1;
     }
-    $self->dump_watched('added new') if $self->{ver} >= 8;
+    $self->dump_watched('added/moved') if ( $self->{ver} >= 9 || ( $self->{ver} >= 8 && !$initial_run ));
     return $watcher;
 }
 
@@ -114,33 +120,28 @@ sub watch_this {
     my ( $self, $dir ) = @_;
 
     return 0 unless -d $dir;
-
-    # Do not watch version control dirs.
-    #return 0 if $dir =~ m{/.svn$/};
-    #return 0 if $dir =~ m{/\.svn/};
-
-    # Inside temp directory.
-    #return 0 if $dir =~ m{/temp/};
-
+    
+    if ( defined $self->{grep_dirs_sub} ) {
+        return 0 unless $self->{grep_dirs_sub}->( $dir );
+    }
     return 1;
-
 }
 
 
 sub item_to_watch {
-    my ( $self, $dir ) = @_;
+    my ( $self, $dir, $initial_run ) = @_;
     return undef unless $self->watch_this( $dir );
-    return $self->inotify_watch( $dir );
+    return $self->inotify_watch( $dir, $initial_run );
 }
 
 
 sub items_to_watch_recursive {
-    my ( $self, $dirs_to_watch ) = @_;
+    my ( $self, $dirs_to_watch, $initial_run ) = @_;
 
     # Add watchers.
     return finddepth( {
             wanted => sub {
-                $self->item_to_watch( $_ );
+                $self->item_to_watch( $_, $initial_run );
             },
             no_chdir => 1,
         },
@@ -220,7 +221,7 @@ sub set_watcher_sub {
 
         }  else {
             if ( $e->IN_CREATE ) {
-                $self->items_to_watch_recursive( [ $fullname ] );
+                $self->items_to_watch_recursive( [ $fullname ], 0 );
                 
             } elsif ( $e->IN_MOVED_TO ) {
                 my $cookie = $e->{cookie};
@@ -228,7 +229,7 @@ sub set_watcher_sub {
                     # Check if we want to watch new name.
                     if ( $self->watch_this($fullname) ) {
                         # Update path inside existing watch.
-                        $self->items_to_watch_recursive( [ $fullname ] );
+                        $self->items_to_watch_recursive( [ $fullname ], 0 );
                         delete $self->{cookies_to_rm}->{$cookie};
 
                     # Remove old watch if exists.
@@ -243,14 +244,14 @@ sub set_watcher_sub {
                     }
 
                 } else {
-                    $self->items_to_watch_recursive( [ $fullname ] );
+                    $self->items_to_watch_recursive( [ $fullname ], 0 );
                 }
             }
 
             if ( $self->{ver} >= 2 ) {
                 my @lt = localtime($time);
                 my $dt = sprintf("%02d.%02d.%04d %02d:%02d:%02d -", $lt[3], ($lt[4] + 1),( $lt[5] + 1900), $lt[2], $lt[1], $lt[0] );
-                print $dt . ' ';
+                print $dt;
 
                 if ( $self->{ver} >= 3 ) {
                     my $mask = $e->{mask};
@@ -302,7 +303,7 @@ sub set_watcher_sub {
             $self->item_to_remove_by_event( $fullname, $e, 1 );
         }
 
-        $self->dump_watched('actual list') if $self->{ver} >= 8;
+        $self->dump_watched('actual list') if $self->{ver} >= 9;
         return 1;
     };
 
@@ -316,7 +317,7 @@ sub add_dirs {
     $self->{num_watched} = 0;
     $self->{num_to_watch} = 0;
 
-    $self->items_to_watch_recursive( $dirs_to_watch );
+    $self->items_to_watch_recursive( $dirs_to_watch, 1 );
 
     if ( $self->{num_to_watch} != $self->{num_watched} ) {
         print "Watching only $self->{num_watched} of $self->{num_to_watch} dirs.\n" if $self->{ver} >= 3;

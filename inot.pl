@@ -29,9 +29,26 @@ if ( $devel ) {
     ];
 }
 
+
+my $grep_dirs_sub = sub {
+    my ( $dir ) = @_;
+    
+    # Ignore subversion directories.
+    return 0 if $dir =~ m{/\.svn$};
+    return 0 if $dir =~ m{/\.svn/};
+
+    # Ignore temp directories.
+    return 0 if $dir =~ m{/temp$};
+    return 0 if $dir =~ m{/temp/};
+    return 1;
+};
+
+
 # create a new object
-my $inotify = new Linux::Inotify2::Recur( $ver )
-    or croak "Unable to create new inotify object: $!";
+my $inotify = new Linux::Inotify2::Recur({
+    'ver' => $ver,
+    'grep_dirs_sub' => $grep_dirs_sub,
+}) or croak "Unable to create new inotify object: $!";
 
 
 sub mdump {
