@@ -247,31 +247,33 @@ sub set_watcher_sub {
         }
 
 
-        if ( $e->IN_CREATE ) {
-            $self->items_to_watch_recursive( [ $fullname ], 0 );
-            
-        } elsif ( $e->IN_MOVED_TO ) {
-            my $cookie = $e->{cookie};
-            if ( exists $self->{cookies_to_rm}->{$cookie} ) {
-                # Check if we want to watch new name.
-                if ( $self->watch_this($fullname) ) {
-                    # Update path inside existing watch.
-                    $self->items_to_watch_recursive( [ $fullname ], 0 );
-                    delete $self->{cookies_to_rm}->{$cookie};
-
-                # Remove old watch if exists.
-                } elsif ( defined $self->{cookies_to_rm}->{$cookie} ) {
-                    my $c_fullname = $self->{cookies_to_rm}->{$cookie};
-                    $self->item_to_remove_by_name( $c_fullname, 1 );
-                    delete $self->{cookies_to_rm}->{$cookie};
-
-                # Remember new cookie.
-                } else {
-                    $self->{cookies_to_rm}->{ $e->{cookie} } = undef;
-                }
-
-            } else {
+        if ( $e->IN_ISDIR ) {
+            if ( $e->IN_CREATE ) {
                 $self->items_to_watch_recursive( [ $fullname ], 0 );
+                
+            } elsif ( $e->IN_MOVED_TO ) {
+                my $cookie = $e->{cookie};
+                if ( exists $self->{cookies_to_rm}->{$cookie} ) {
+                    # Check if we want to watch new name.
+                    if ( $self->watch_this($fullname) ) {
+                        # Update path inside existing watch.
+                        $self->items_to_watch_recursive( [ $fullname ], 0 );
+                        delete $self->{cookies_to_rm}->{$cookie};
+
+                    # Remove old watch if exists.
+                    } elsif ( defined $self->{cookies_to_rm}->{$cookie} ) {
+                        my $c_fullname = $self->{cookies_to_rm}->{$cookie};
+                        $self->item_to_remove_by_name( $c_fullname, 1 );
+                        delete $self->{cookies_to_rm}->{$cookie};
+
+                    # Remember new cookie.
+                    } else {
+                        $self->{cookies_to_rm}->{ $e->{cookie} } = undef;
+                    }
+
+                } else {
+                    $self->items_to_watch_recursive( [ $fullname ], 0 );
+                }
             }
         }
 
@@ -294,7 +296,7 @@ sub set_watcher_sub {
         # Event on directory, but item inside changed.
         if ( length($e->{name}) ) {
             # Directory moved away.
-            if ( $e->{mask} & IN_MOVED_FROM ) {
+            if ( $e->{mask} & ( IN_MOVED_FROM & IN_ISDIR ) ) {
                 my $cookie = $e->{cookie};
                 if ( exists $self->{cookies_to_rm}->{$cookie} ) {
                     # Nothing to do. See assumption a).
@@ -346,7 +348,7 @@ sub cleanup_moved_out {
     foreach my $cookie ( keys %{ $self->{cookies_to_rm} } ) {
        if ( defined $self->{cookies_to_rm}->{$cookie} ) {
             my $fullname = $self->{cookies_to_rm}->{$cookie};
-            print "After loop cleanup - fullname '$fullname'.\n" if $self->{ver} >= 4;
+            print "After loop cleanup - fullname '$fullname'.\n" if $self->{ver} >= 5;
             $self->item_to_remove_by_name( $fullname, 0 );
             my $items_inside_prefix = $fullname . '/';
             $self->item_to_remove_by_name( $items_inside_prefix, 1 );
