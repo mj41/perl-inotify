@@ -2,3 +2,8 @@
 * separate config for watching files and directories
 * add tests
 * add documentation
+* safe way to load file content (without loop)
+
+Maybe
+* script to use GitStore to save history and show diffs
+** http://search.cpan.org/~yanick/GitStore/lib/GitStore.pm

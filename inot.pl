@@ -43,11 +43,33 @@ my $grep_dirs_sub = sub {
     return 1;
 };
 
+my $my_event_handle = sub {
+    my ( $fullname, $e, $ver ) = @_;
+    
+    if ( $e->IN_ISDIR ) {
+        print "====> my_event_handle: Directory '$fullname'.\n" if $ver >= 3;
+
+    } elsif ( $fullname =~ m{/\.swp$} # vi editor backup
+           || $fullname =~ m{/\.swx$} # vi editor backup
+           || $fullname =~ m{/tempfile\.tmp$} # svn update tempfile
+           || $fullname =~ m{/\.\#[^\/]+]$} # mc editor backup
+    ) {
+        print "====> my_event_handle: Skipping temp filename '$fullname'.\n" if $ver >= 5;
+
+    } else {
+        if ( $e->IN_CLOSE_WRITE ) {
+            print "====> my_event_handle: File '$fullname'.\n" if $ver >= 3;
+        }
+    }
+
+    return 1;
+};
 
 # create a new object
 my $inotify = new Linux::Inotify2::Recur({
     'ver' => $ver,
     'grep_dirs_sub' => $grep_dirs_sub,
+    'my_event_handle' => $my_event_handle,
 }) or croak "Unable to create new inotify object: $!";
 
 

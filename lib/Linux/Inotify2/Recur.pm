@@ -48,13 +48,18 @@ sub new {
     $self->{ver} = 3;
     $self->{ver} = $conf->{ver} if defined $conf->{ver};
     
-    # Dirs to skip.
+    # User defined subroutine to filter directories to watch.
     $self->{grep_dirs_sub} = undef;
     $self->{grep_dirs_sub} = $conf->{grep_dirs_sub} if defined $conf->{grep_dirs_sub};
-    
-    $self->load_ev_names() if $self->{ver} >= 3;
-    
+
+    # User defined subroutine to run after event occurs.
+    $self->{my_event_handle} = undef;
+    $self->{my_event_handle} = $conf->{my_event_handle} if defined $conf->{my_event_handle};
+
+    # Initialize vars.
     $self->{cookies_to_rm} = {};
+
+    $self->load_ev_names() if $self->{ver} >= 3;
     $self->set_watcher_sub();
     
     return $self;
@@ -213,73 +218,76 @@ sub set_watcher_sub {
         my $time = time();
         my $fullname = $e->fullname;
 
-        if (    $fullname =~ m{/\.swp$} # vi editor backup
-             || $fullname =~ m{/\.swx$} # vi editor backup
-             # || $fullname =~ m{/tempfile\.tmp$} # svn update tempfile
-        ) {
-            print "Skipping '$fullname'.\n" if $self->{ver} >= 5;
+        # Print event info.
+        if ( $self->{ver} >= 2 ) {
+            my @lt = localtime($time);
+            my $dt = sprintf("%02d.%02d.%04d %02d:%02d:%02d -", $lt[3], ($lt[4] + 1),( $lt[5] + 1900), $lt[2], $lt[1], $lt[0] );
+            print $dt;
 
-        }  else {
-            if ( $e->IN_CREATE ) {
-                $self->items_to_watch_recursive( [ $fullname ], 0 );
-                
-            } elsif ( $e->IN_MOVED_TO ) {
-                my $cookie = $e->{cookie};
-                if ( exists $self->{cookies_to_rm}->{$cookie} ) {
-                    # Check if we want to watch new name.
-                    if ( $self->watch_this($fullname) ) {
-                        # Update path inside existing watch.
-                        $self->items_to_watch_recursive( [ $fullname ], 0 );
-                        delete $self->{cookies_to_rm}->{$cookie};
-
-                    # Remove old watch if exists.
-                    } elsif ( defined $self->{cookies_to_rm}->{$cookie} ) {
-                        my $c_fullname = $self->{cookies_to_rm}->{$cookie};
-                        $self->item_to_remove_by_name( $c_fullname, 1 );
-                        delete $self->{cookies_to_rm}->{$cookie};
-
-                    # Remember new cookie.
+            if ( $self->{ver} >= 3 ) {
+                my $mask = $e->{mask};
+                if ( defined $mask ) {
+                    if ( defined $self->{ev_names}->{$mask} ) {
+                        print " " . $self->{ev_names}->{$mask};
                     } else {
-                        $self->{cookies_to_rm}->{ $e->{cookie} } = undef;
-                    }
-
-                } else {
-                    $self->items_to_watch_recursive( [ $fullname ], 0 );
-                }
-            }
-
-            if ( $self->{ver} >= 2 ) {
-                my @lt = localtime($time);
-                my $dt = sprintf("%02d.%02d.%04d %02d:%02d:%02d -", $lt[3], ($lt[4] + 1),( $lt[5] + 1900), $lt[2], $lt[1], $lt[0] );
-                print $dt;
-
-                if ( $self->{ver} >= 3 ) {
-                    my $mask = $e->{mask};
-                    if ( defined $mask ) {
-                        if ( defined $self->{ev_names}->{$mask} ) {
-                            print " " . $self->{ev_names}->{$mask};
-                        } else {
-                            foreach my $ev_mask (keys %{$self->{ev_names}}) {
-                                if ( ($mask & $ev_mask) == $ev_mask ) {
-                                    my $name = $self->{ev_names}->{ $ev_mask };
-                                    print " $name";
-                                }
+                        foreach my $ev_mask (keys %{$self->{ev_names}}) {
+                            if ( ($mask & $ev_mask) == $ev_mask ) {
+                                my $name = $self->{ev_names}->{ $ev_mask };
+                                print " $name";
                             }
                         }
                     }
                 }
-
-                print ' -- ' . $fullname;
-                print ' (' . $e->{name} . ')' if $e->{name};
-                print ", cookie: '" . $e->{cookie} . "'" if $self->{ver} >= 3 && $e->{cookie};
-                print "\n";
             }
 
-            # Print line separator only each second.
-            if ( int($time) != $last_time ) {
-                print "-" x 80 . "\n" if $self->{ver} >= 3;
-                $last_time = int($time);
+            print ' -- ' . $fullname;
+            print ' (' . $e->{name} . ')' if $e->{name};
+            print ", cookie: '" . $e->{cookie} . "'" if $self->{ver} >= 3 && $e->{cookie};
+            print "\n";
+        }
+
+
+        if ( $e->IN_CREATE ) {
+            $self->items_to_watch_recursive( [ $fullname ], 0 );
+            
+        } elsif ( $e->IN_MOVED_TO ) {
+            my $cookie = $e->{cookie};
+            if ( exists $self->{cookies_to_rm}->{$cookie} ) {
+                # Check if we want to watch new name.
+                if ( $self->watch_this($fullname) ) {
+                    # Update path inside existing watch.
+                    $self->items_to_watch_recursive( [ $fullname ], 0 );
+                    delete $self->{cookies_to_rm}->{$cookie};
+
+                # Remove old watch if exists.
+                } elsif ( defined $self->{cookies_to_rm}->{$cookie} ) {
+                    my $c_fullname = $self->{cookies_to_rm}->{$cookie};
+                    $self->item_to_remove_by_name( $c_fullname, 1 );
+                    delete $self->{cookies_to_rm}->{$cookie};
+
+                # Remember new cookie.
+                } else {
+                    $self->{cookies_to_rm}->{ $e->{cookie} } = undef;
+                }
+
+            } else {
+                $self->items_to_watch_recursive( [ $fullname ], 0 );
             }
+        }
+
+
+        if ( defined $self->{my_event_handle} ) {
+            $self->{my_event_handle}->( 
+                $fullname,
+                $e,
+                $self->{ver}
+            );
+        }
+
+        # Print line separator only each second.
+        if ( int($time) != $last_time ) {
+            print "-" x 80 . "\n" if $self->{ver} >= 3;
+            $last_time = int($time);
         }
 
 
@@ -320,9 +328,9 @@ sub add_dirs {
     $self->items_to_watch_recursive( $dirs_to_watch, 1 );
 
     if ( $self->{num_to_watch} != $self->{num_watched} ) {
-        print "Watching only $self->{num_watched} of $self->{num_to_watch} dirs.\n" if $self->{ver} >= 3;
+        print "Watching only $self->{num_watched} of $self->{num_to_watch} dirs.\n\n" if $self->{ver} >= 3;
     } else {
-        print "Now watching all $self->{num_watched} dirs.\n" if $self->{ver} >= 3;
+        print "Now watching all $self->{num_watched} dirs.\n\n" if $self->{ver} >= 3;
     }
 
     return 1;

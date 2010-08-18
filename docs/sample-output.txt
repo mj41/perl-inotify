@@ -1,0 +1,91 @@
+# clear && perl inot.pl 0 8 
+
+Running in devel mode. Verbose level 8.
+Events:
+   IN_ACCESS 1
+   IN_MODIFY 2
+   IN_ATTRIB 4
+   IN_CLOSE_WRITE 8
+   IN_CLOSE_NOWRITE 16
+   IN_OPEN 32
+   IN_MOVED_FROM 64
+   IN_MOVED_TO 128
+   IN_CREATE 256
+   IN_DELETE 512
+   IN_DELETE_SELF 1024
+   IN_MOVE_SELF 2048
+   IN_ALL_EVENTS 4095
+   IN_UNMOUNT 8192
+   IN_Q_OVERFLOW 16384
+   IN_IGNORED 32768
+   IN_CLOSE 24
+   IN_MOVE 192
+   IN_ISDIR 1073741824
+   IN_ONESHOT -2147483648
+   IN_MASK_ADD 536870912
+   IN_DONT_FOLLOW 33554432
+   IN_ONLYDIR 16777216
+
+Watching './test-dir/dirA'
+Watching './test-dir'
+Now watching all 2 dirs.
+
+18.08.2010 17:03:19 - IN_ISDIR IN_CREATE -- ./test-dir/dirB (dirB)
+Watching './test-dir/dirB'
+Watch list - added/moved:
+   1 - ./test-dir/dirA : 42954
+   2 - ./test-dir : 42954
+   3 - ./test-dir/dirB : 42954
+
+====> my_event_handle: Directory './test-dir/dirB'.
+--------------------------------------------------------------------------------
+18.08.2010 17:03:19 - IN_MOVED_FROM -- ./test-dir/dirA/file.txt (file.txt), cookie: '683801'
+After loop cleanup - fullname './test-dir/dirA/file.txt'.
+18.08.2010 17:03:19 - IN_MOVED_TO -- ./test-dir/dirB/test-file.txt (test-file.txt), cookie: '683801'
+18.08.2010 17:03:19 - IN_MODIFY -- ./test-dir/dirB/test-file.txt (test-file.txt)
+18.08.2010 17:03:19 - IN_CLOSE_WRITE -- ./test-dir/dirB/test-file.txt (test-file.txt)
+====> my_event_handle: File './test-dir/dirB/test-file.txt'.
+18.08.2010 17:03:19 - IN_ISDIR IN_CREATE -- ./test-dir/dirB/newDir (newDir)
+Watching './test-dir/dirB/newDir'
+Watch list - added/moved:
+   1 - ./test-dir/dirA : 42954
+   2 - ./test-dir : 42954
+   3 - ./test-dir/dirB : 42954
+   4 - ./test-dir/dirB/newDir : 42954
+
+====> my_event_handle: Directory './test-dir/dirB/newDir'.
+18.08.2010 17:03:19 - IN_ISDIR IN_MOVED_FROM -- ./test-dir/dirB/newDir (newDir), cookie: '683802'
+====> my_event_handle: Directory './test-dir/dirB/newDir'.
+After loop cleanup - fullname './test-dir/dirB/newDir'.
+Stopping watching ./test-dir/dirB/newDir (by name './test-dir/dirB/newDir', rec: 0).
+Watch list - removed by name:
+   1 - ./test-dir/dirA : 42954
+   2 - ./test-dir : 42954
+   3 - ./test-dir/dirB : 42954
+
+18.08.2010 17:03:19 - IN_MOVED_TO IN_ISDIR -- ./test-dir/dirA/newDir (newDir), cookie: '683803'
+Watching './test-dir/dirA/newDir'
+Watch list - added/moved:
+   1 - ./test-dir/dirA : 42954
+   2 - ./test-dir : 42954
+   3 - ./test-dir/dirB : 42954
+   5 - ./test-dir/dirA/newDir : 42954
+
+====> my_event_handle: Directory './test-dir/dirA/newDir'.
+18.08.2010 17:03:19 - IN_DELETE IN_ISDIR -- ./test-dir/dirA/newDir (newDir)
+====> my_event_handle: Directory './test-dir/dirA/newDir'.
+18.08.2010 17:03:19 - IN_DELETE_SELF -- ./test-dir/dirA/newDir
+Stopping watching ./test-dir/dirA/newDir (by object).
+Watch list - removed by ref:
+   1 - ./test-dir/dirA : 42954
+   2 - ./test-dir : 42954
+   3 - ./test-dir/dirB : 42954
+
+18.08.2010 17:03:19 - IN_DELETE IN_ISDIR -- ./test-dir/dirA (dirA)
+====> my_event_handle: Directory './test-dir/dirA'.
+18.08.2010 17:03:19 - IN_DELETE_SELF -- ./test-dir/dirA
+Stopping watching ./test-dir/dirA (by object).
+Watch list - removed by ref:
+   2 - ./test-dir : 42954
+   3 - ./test-dir/dirB : 42954
+

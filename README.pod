@@ -9,9 +9,10 @@ To run inot in debug mode try
 
     cd perl-inotify
     mkdir ./test-dir
-    perl inot.pl 0 9
+    perl inot.pl 0 8
 
 and then do some changes inside ./test-dir.
+See also ./docs/sample-output.txt
 
 =head1 See also
 
