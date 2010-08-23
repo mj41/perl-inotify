@@ -44,7 +44,7 @@ my $grep_dirs_sub = sub {
 };
 
 my $my_event_handle = sub {
-    my ( $fullname, $e, $ver ) = @_;
+    my ( $time, $fullname, $e, $ver ) = @_;
     
     if ( $e->IN_ISDIR ) {
         print "====> my_event_handle: Directory '$fullname'.\n" if $ver >= 3;

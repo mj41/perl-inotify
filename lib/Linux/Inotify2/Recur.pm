@@ -280,6 +280,7 @@ sub set_watcher_sub {
 
         if ( defined $self->{my_event_handle} ) {
             $self->{my_event_handle}->( 
+                $time,
                 $fullname,
                 $e,
                 $self->{ver}
