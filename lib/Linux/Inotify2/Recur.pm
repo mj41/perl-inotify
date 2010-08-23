@@ -6,7 +6,7 @@ use base 'Linux::Inotify2';
 use Linux::Inotify2;
 
 use File::Find;
-
+use Time::HiRes qw(time);
 
 =head1 NAME
 
